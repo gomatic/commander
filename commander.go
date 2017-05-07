@@ -2,24 +2,30 @@ package commander
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v2"
 )
 
 //
 type Commanding struct {
-	Cmd    *exec.Cmd
-	Prefix string
-	Binary string
+	Cmd       *exec.Cmd
+	Prefix    string
+	Binary    string
+	debugging bool
 }
 
 //
 func New(prefix string) *Commanding {
+	debugging, exists := os.LookupEnv("DEBUGGING")
 	return &Commanding{
-		Prefix: prefix,
-		Cmd:    &exec.Cmd{},
+		Prefix:    prefix,
+		Cmd:       &exec.Cmd{},
+		debugging: exists && strings.ToLower(debugging) == "true",
 	}
 }
 
@@ -32,31 +38,33 @@ func (c *Commanding) Args(args ...string) *Commanding {
 // Append os.Args[from:] to the command arguments.
 func (c *Commanding) Inherit(from int) *Commanding {
 	c.Cmd.Env = os.Environ()
-	if la := len(os.Args); from > la {
-		from = la
-	} else if from < 0 {
-		from = 0
-	}
-	l := len(os.Args)
-	if l == 0 {
+	args := os.Args[1:]
+	la := len(args)
+	if la == 0 || from > la {
 		return c
 	}
-	start, end := from%l, l
+	start, end := from, la
+	if c.debugging {
+		log.Printf("from:%d start:%d end:%d la:%d args:%s", from, start, end, la, args)
+	}
 	if start < 0 {
-		start = l + start
+		start = la + start
 	}
 	if end < 0 {
-		end = l + end
+		end = la + end
 	}
 	if start > end {
 		start, end = end, start
 	}
-	if start > l || start < 0 || end < 0 {
+	if start > la || start < 0 || end < 0 {
 		return c
-	} else if end > l {
-		end = l
+	} else if end > la {
+		end = la
 	}
-	c.Cmd.Args = append(c.Cmd.Args, os.Args[start:end]...)
+	c.Cmd.Args = append(c.Cmd.Args, args[start:end]...)
+	if c.debugging {
+		log.Printf("from:%d start:%d end:%d la:%d args:%s", from, start, end, la, c.Cmd.Args)
+	}
 	return c
 }
 
@@ -96,11 +104,21 @@ func (c *Commanding) LookPath(name string) (*Commanding, error) {
 
 // Exec the command.
 // To execute a specific binary without first calling c.LookPath, just set c.Binary
-func (c *Commanding) Execute() error {
+func (c Commanding) Execute() error {
 	if c.Binary == "" {
-		return fmt.Errorf("%s", "")
+		return fmt.Errorf("No binary specified")
 	}
-	return Launch(c.Prefix, append([]string{c.Binary}, c.Cmd.Args...), c.Cmd.Env, Exec)
+
+	if c.debugging {
+		if config, err := yaml.Marshal(yaml.MapSlice{
+			{"binary", c.Binary},
+			{"args", c.Cmd.Args},
+		}); err == nil {
+			fmt.Fprintln(os.Stderr, string(config))
+		}
+	}
+
+	return Launch(append([]string{c.Binary}, c.Cmd.Args...), c.Cmd.Env, Exec)
 }
 
 // Reproduce a command line string that reflects a usable command line.

@@ -11,18 +11,11 @@ import (
 type Executor func(string, []string, []string) error
 
 //
-func Launch(prefix string, args []string, env []string, exe func(string, []string, []string) error) error {
-
+func Launch(args []string, env []string, exe func(string, []string, []string) error) error {
 	if len(args) == 0 {
 		return errors.New("Missing required command parameter.")
 	}
-
-	binary, err := exec.LookPath(args[0])
-	if err != nil {
-		return err
-	}
-
-	return exe(binary, args, env)
+	return exe(args[0], args, env)
 }
 
 //
